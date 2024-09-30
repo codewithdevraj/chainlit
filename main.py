@@ -1,3 +1,5 @@
+# import required dependencies
+# https://docs.chainlit.io/integrations/langchain
 import os
 from langchain import hub
 from langchain_community.embeddings import OllamaEmbeddings
@@ -8,10 +10,13 @@ from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 import chainlit as cl
 from langchain.chains import RetrievalQA
 
+os.environ["PORT"] = "8252"
+
 ABS_PATH: str = os.path.dirname(os.path.abspath(__file__))
 DB_DIR: str = os.path.join(ABS_PATH, "db")
 
-# Set up RetrievalQA model
+
+# Set up RetrievelQA model
 rag_prompt_mistral = hub.pull("rlm/rag-prompt-mistral")
 
 
@@ -40,17 +45,24 @@ def qa_bot():
     vectorstore = Chroma(
         persist_directory=DB_PATH, embedding_function=OllamaEmbeddings(model="mistral")
     )
+
     qa = retrieval_qa_chain(llm, vectorstore)
     return qa
 
 
 @cl.on_chat_start
 async def start():
+    """
+    Initializes the bot when a new chat starts.
+
+    This asynchronous function creates a new instance of the retrieval QA bot,
+    sends a welcome message, and stores the bot instance in the user's session.
+    """
     chain = qa_bot()
     welcome_message = cl.Message(content="Starting the bot...")
     await welcome_message.send()
     welcome_message.content = (
-        "Hi, Welcome to Vedic Chatbot. Let me know how I can assist you."
+        "Hi, Welcome to Vedic Chatbot. Let me know how can I assist you? ."
     )
     await welcome_message.update()
     cl.user_session.set("chain", chain)
@@ -58,18 +70,30 @@ async def start():
 
 @cl.on_message
 async def main(message):
+    """
+    Processes incoming chat messages.
+
+    This asynchronous function retrieves the QA bot instance from the user's session,
+    sets up a callback handler for the bot's response, and executes the bot's
+    call method with the given message and callback. The bot's answer and source
+    documents are then extracted from the response.
+    """
     chain = cl.user_session.get("chain")
     cb = cl.AsyncLangchainCallbackHandler()
     cb.answer_reached = True
+    # res=await chain.acall(message, callbacks=[cb])
     res = await chain.acall(message.content, callbacks=[cb])
+    # print(f"response: {res}")
     answer = res["result"]
+    # answer = answer.replace(".", ".\n")
     source_documents = res["source_documents"]
 
-    text_elements = []
+    text_elements = []  # type: List[cl.Text]
 
     if source_documents:
         for source_idx, source_doc in enumerate(source_documents):
             source_name = f"source_{source_idx}"
+            # Create the text element referenced in the message
             text_elements.append(
                 cl.Text(content=source_doc.page_content, name=source_name)
             )
@@ -82,8 +106,5 @@ async def main(message):
 
     await cl.Message(content=answer, elements=text_elements).send()
 
-
-# Run the Chainlit app, specifying the port and host
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))  # Default to 8000 if no port is set
-    cl.run(port=port, host="0.0.0.0")
+    cl.run()
