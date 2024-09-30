@@ -10,7 +10,7 @@ from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 import chainlit as cl
 from langchain.chains import RetrievalQA
 
-os.environ["PORT"] = "8252"
+port = os.getenv("PORT", "8252")
 
 ABS_PATH: str = os.path.dirname(os.path.abspath(__file__))
 DB_DIR: str = os.path.join(ABS_PATH, "db")
@@ -107,4 +107,4 @@ async def main(message):
     await cl.Message(content=answer, elements=text_elements).send()
 
 if __name__ == "__main__":
-    cl.run()
+    cl.run(port=port)  # Specify the port here
